@@ -75,7 +75,7 @@
 
   <script>
     const API_URL = "https://www.alphavantage.co/query";
-    const API_KEY = "YOUR_API_KEY"; // 8F78ZXEXI74TFQAB
+    const API_KEY = "YOUR_API_KEY"; // 在这里替换成你的API Key
 
     function fetchStockData() {
       const stockCode = document.getElementById("stockCode").value;
@@ -84,24 +84,43 @@
         return;
       }
 
-      const url = `${API_URL}?function=TIME_SERIES_DAILY&symbol=${stockCode}&apikey=${API_KEY}&outputsize=compact`;
+      const url = `${API_URL}?function=TIME_SERIES_DAILY&symbol=${stockCode}&apikey=${API_KEY}&outputsize=full`;
 
       fetch(url)
         .then(response => response.json())
         .then(data => {
           if (data["Time Series (Daily)"]) {
             const timeSeries = data["Time Series (Daily)"];
-            const lastDate = Object.keys(timeSeries)[0];
-            const lastClosePrice = parseFloat(timeSeries[lastDate]["4. close"]);
+            const dates = Object.keys(timeSeries);
             
-            // 假设你有个基准股价 10 元
-            const basePrice = 10;
-            const deviation = ((lastClosePrice - basePrice) / basePrice) * 100;
+            // 计算10天和30天的涨幅偏离值累计值
+            const calculateDeviation = (days) => {
+              let deviationSum = 0;
+              let basePrice = parseFloat(timeSeries[dates[days - 1]]["4. close"]);
+
+              for (let i = 0; i < days; i++) {
+                const currentDate = dates[i];
+                const currentPrice = parseFloat(timeSeries[currentDate]["4. close"]);
+                deviationSum += ((currentPrice - basePrice) / basePrice) * 100;
+                basePrice = currentPrice;
+              }
+              return deviationSum.toFixed(2);
+            };
+
+            const deviation10 = calculateDeviation(10);
+            const deviation30 = calculateDeviation(30);
+
+            // 计算未来10天和30天可能触发的股价
+            const lastClosePrice = parseFloat(timeSeries[dates[0]]["4. close"]);
+            const predictTriggerPrice10 = (lastClosePrice * 1.1).toFixed(2);  // 假设未来10天涨幅为10%
+            const predictTriggerPrice30 = (lastClosePrice * 1.3).toFixed(2);  // 假设未来30天涨幅为30%
 
             const result = {
               stock_code: stockCode,
-              current_deviation: deviation.toFixed(2),
-              predict_trigger_price_10: (lastClosePrice * 1.1).toFixed(2),
+              deviation_10d: deviation10,
+              deviation_30d: deviation30,
+              predict_trigger_price_10: predictTriggerPrice10,
+              predict_trigger_price_30: predictTriggerPrice30,
             };
 
             displayResults(result);
@@ -119,8 +138,10 @@
 
       resultsContainer.innerHTML = `
         <h3>股票代码: ${data.stock_code}</h3>
-        <div>当前偏离值: ${data.current_deviation}%</div>
+        <div>10日累计偏离值: ${data.deviation_10d}%</div>
+        <div>30日累计偏离值: ${data.deviation_30d}%</div>
         <div>预计10日触发价格: ${data.predict_trigger_price_10}元</div>
+        <div>预计30日触发价格: ${data.predict_trigger_price_30}元</div>
       `;
     }
   </script>
