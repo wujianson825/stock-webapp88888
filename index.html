@@ -1,62 +1,122 @@
-import tushare as ts
-import pandas as pd
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>股票数据查询</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f8f9fa;
+        }
+        .container {
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        h2 {
+            text-align: center;
+        }
+        .result {
+            margin-top: 20px;
+        }
+        .result table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .result th, .result td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: center;
+        }
+        .result th {
+            background-color: #f2f2f2;
+        }
+        .error {
+            color: red;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
 
-# 设置 TuShare Token
-ts.set_token(6f4bb3282e834e7c85aa4b11bcfd56b8bddd899ea60e4660b67fa0caa7471f3f)  # 替换为你的API Key
-pro = ts.pro_api()
+<div class="container">
+    <h2>股票数据查询</h2>
+    <label for="stockSymbol">股票代码：</label>
+    <input type="text" id="stockSymbol" placeholder="请输入股票代码">
+    <label for="startDate">开始日期：</label>
+    <input type="date" id="startDate">
+    <label for="endDate">结束日期：</label>
+    <input type="date" id="endDate">
+    <button id="fetchDataBtn">查询数据</button>
 
-# 获取股票和指数的历史数据
-def get_stock_data(stock_code, start_date, end_date):
-    # 获取股票历史数据
-    stock_data = pro.daily(ts_code=stock_code, start_date=start_date, end_date=end_date)
-    return stock_data
+    <div class="result" id="result"></div>
+    <div class="error" id="error"></div>
+</div>
 
-def get_index_data(index_code, start_date, end_date):
-    # 获取指数历史数据
-    index_data = pro.index_daily(ts_code=index_code, start_date=start_date, end_date=end_date)
-    return index_data
+<script>
+document.getElementById('fetchDataBtn').addEventListener('click', function() {
+    let symbol = document.getElementById('stockSymbol').value;
+    let startDate = document.getElementById('startDate').value;
+    let endDate = document.getElementById('endDate').value;
 
-def calculate_deviation(stock_data, index_data):
-    # 合并数据，计算股票与指数的涨跌幅偏离值
-    df = pd.merge(stock_data[['trade_date', 'close']], index_data[['trade_date', 'close']], on='trade_date', suffixes=('_stock', '_index'))
+    if (!symbol || !startDate || !endDate) {
+        document.getElementById('error').innerText = "请确保输入股票代码和日期范围";
+        return;
+    }
 
-    # 计算每一天的涨跌幅
-    df['stock_pct_change'] = df['close_stock'].pct_change() * 100
-    df['index_pct_change'] = df['close_index'].pct_change() * 100
+    document.getElementById('error').innerText = '';  // 清除错误信息
 
-    # 计算偏离值
-    df['deviation'] = df['stock_pct_change'] - df['index_pct_change']
-    
-    return df
+    const apiUrl = `https://api.itick.com/stock?symbol=${symbol}&date_range=${startDate},${endDate}&api_key=6f4bb3282e834e7c85aa4b11bcfd56b8bddd899ea60e4660b67fa0caa7471f3f`;
 
-def calculate_cumulative_deviation(deviation_series, period=10):
-    # 计算累计偏离值
-    cumulative_deviation = deviation_series.tail(period).sum()
-    return cumulative_deviation
+    fetch(apiUrl)
+        .then(response => response.json())
+        .then(data => {
+            if (data && data.length > 0) {
+                displayResults(data);
+            } else {
+                document.getElementById('error').innerText = "未能找到相关数据";
+            }
+        })
+        .catch(error => {
+            document.getElementById('error').innerText = "数据加载失败，请稍后重试";
+            console.error('API 请求失败:', error);
+        });
+});
 
-def predict_trigger_price(stock_data, index_data, period=10):
-    # 假设股票日涨幅限制为10%
-    max_increase_percentage = 10  # 股票日涨幅最大为10%
-    
-    df = calculate_deviation(stock_data, index_data)
-    
-    # 计算滚动的累计偏离值
-    cumulative_deviation = calculate_cumulative_deviation(df['deviation'], period)
+function displayResults(data) {
+    let resultHTML = `
+        <table>
+            <thead>
+                <tr>
+                    <th>日期</th>
+                    <th>开盘价</th>
+                    <th>收盘价</th>
+                    <th>涨幅</th>
+                    <th>成交量</th>
+                </tr>
+            </thead>
+            <tbody>`;
 
-    # 根据累计偏离值来预测价格
-    # 假设，如果偏离值累计达到100%（即，股票涨幅将达到10%）
-    trigger_price = stock_data['close'].iloc[-1] * (1 + max_increase_percentage / 100)
-    return trigger_price, cumulative_deviation
+    data.forEach(item => {
+        let priceChange = ((item.close - item.open) / item.open * 100).toFixed(2); // 计算涨幅
+        resultHTML += `
+            <tr>
+                <td>${item.date}</td>
+                <td>${item.open}</td>
+                <td>${item.close}</td>
+                <td>${priceChange}%</td>
+                <td>${item.volume}</td>
+            </tr>`;
+    });
 
-# 示例：获取A股股票（如：600519.SH）与上证综指的历史数据
-stock_code = '600519.SH'
-index_code = '000001.SH'  # 上证综指
+    resultHTML += `</tbody></table>`;
+    document.getElementById('result').innerHTML = resultHTML;
+}
+</script>
 
-# 获取数据
-stock_data = get_stock_data(stock_code, '20230101', '20230815')
-index_data = get_index_data(index_code, '20230101', '20230815')
-
-# 计算预测价格和累计偏离值
-predict_price, cumulative_deviation = predict_trigger_price(stock_data, index_data, period=10)
-print(f"预测触发价格: {predict_price}")
-print(f"10日累计偏离值: {cumulative_deviation}")
+</body>
+</html>
