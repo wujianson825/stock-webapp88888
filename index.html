@@ -1,121 +1,110 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>股票数据查询</title>
+    <title>股票严重异动计算器</title>
     <style>
         body {
             font-family: Arial, sans-serif;
-            background-color: #f8f9fa;
-        }
-        .container {
-            max-width: 800px;
-            margin: 50px auto;
+            background-color: #f4f4f9;
+            color: #333;
             padding: 20px;
-            background-color: white;
-            border-radius: 10px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
         }
-        h2 {
-            text-align: center;
+        input, select {
+            padding: 8px;
+            margin: 10px 0;
+            width: 200px;
         }
         .result {
             margin-top: 20px;
-        }
-        .result table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        .result th, .result td {
+            padding: 10px;
+            background-color: #fff;
             border: 1px solid #ddd;
-            padding: 8px;
-            text-align: center;
         }
-        .result th {
-            background-color: #f2f2f2;
+        .button {
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
         }
-        .error {
-            color: red;
-            text-align: center;
+        .button:hover {
+            background-color: #45a049;
         }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h2>股票数据查询</h2>
-    <label for="stockSymbol">股票代码：</label>
-    <input type="text" id="stockSymbol" placeholder="请输入股票代码">
-    <label for="startDate">开始日期：</label>
-    <input type="date" id="startDate">
-    <label for="endDate">结束日期：</label>
-    <input type="date" id="endDate">
-    <button id="fetchDataBtn">查询数据</button>
+<h1>股票严重异动计算器</h1>
 
-    <div class="result" id="result"></div>
-    <div class="error" id="error"></div>
-</div>
+<p>输入股票代码，选择起始日期，计算10天或30天的严重异动数据</p>
+
+<label for="stockCode">股票代码 (例如：AAPL):</label>
+<input type="text" id="stockCode" placeholder="AAPL" required>
+<br>
+
+<label for="startDate">起始日期：</label>
+<input type="date" id="startDate" value="2025-08-01" required>
+<br>
+
+<label for="endDate">终止日期：</label>
+<input type="date" id="endDate" value="2025-08-15" disabled>
+<br>
+
+<label for="days">计算周期：</label>
+<select id="days">
+    <option value="10">10天</option>
+    <option value="30">30天</option>
+</select>
+
+<button class="button" onclick="calculateDeviation()">计算</button>
+
+<div class="result" id="result"></div>
 
 <script>
-document.getElementById('fetchDataBtn').addEventListener('click', function() {
-    let symbol = document.getElementById('stockSymbol').value;
-    let startDate = document.getElementById('startDate').value;
-    let endDate = document.getElementById('endDate').value;
+    const apiKey = 'BR81LFILB5AQTKT6'; // 替换为你的Alpha Vantage API密钥
+    const apiUrl = 'https://www.alphavantage.co/query?function=TIME_SERIES_DAILY_ADJUSTED&symbol=';
 
-    if (!symbol || !startDate || !endDate) {
-        document.getElementById('error').innerText = "请确保输入股票代码和日期范围";
-        return;
+    async function getStockData(stockCode) {
+        const url = `${apiUrl}${stockCode}&apikey=${apiKey}&outputsize=compact`;
+        const response = await fetch(url);
+        const data = await response.json();
+        return data['Time Series (Daily)'];
     }
 
-    document.getElementById('error').innerText = '';  // 清除错误信息
+    function calculateDeviation() {
+        const stockCode = document.getElementById('stockCode').value;
+        const startDate = document.getElementById('startDate').value;
+        const endDate = document.getElementById('endDate').value;
+        const days = document.getElementById('days').value;
 
-    const apiUrl = `https://api.itick.com/stock?symbol=${symbol}&date_range=${startDate},${endDate}&api_key=6f4bb3282e834e7c85aa4b11bcfd56b8bddd899ea60e4660b67fa0caa7471f3f`;
+        if (!stockCode || !startDate) {
+            alert("请输入股票代码和起始日期！");
+            return;
+        }
 
-    fetch(apiUrl)
-        .then(response => response.json())
-        .then(data => {
-            if (data && data.length > 0) {
-                displayResults(data);
-            } else {
-                document.getElementById('error').innerText = "未能找到相关数据";
-            }
-        })
-        .catch(error => {
-            document.getElementById('error').innerText = "数据加载失败，请稍后重试";
-            console.error('API 请求失败:', error);
+        getStockData(stockCode).then(data => {
+            const startPrice = data[startDate]['4. close'];
+            const endPrice = data[endDate]['4. close'];
+            const startIndex = new Date(startDate).getTime();
+            const endIndex = new Date(endDate).getTime();
+            const interval = Math.abs(endIndex - startIndex) / (1000 * 3600 * 24); // 计算天数间隔
+            const percentageChange = ((endPrice - startPrice) / startPrice) * 100;
+
+            const result = `
+                <strong>计算结果:</strong><br>
+                起始日期: ${startDate} - 终止日期: ${endDate}<br>
+                起始价格: ${startPrice} - 终止价格: ${endPrice}<br>
+                涨跌幅: ${percentageChange.toFixed(2)}%<br>
+                计算周期: ${days}天
+            `;
+
+            document.getElementById('result').innerHTML = result;
+        }).catch(error => {
+            alert("无法获取股票数据，请检查股票代码或API！");
         });
-});
-
-function displayResults(data) {
-    let resultHTML = `
-        <table>
-            <thead>
-                <tr>
-                    <th>日期</th>
-                    <th>开盘价</th>
-                    <th>收盘价</th>
-                    <th>涨幅</th>
-                    <th>成交量</th>
-                </tr>
-            </thead>
-            <tbody>`;
-
-    data.forEach(item => {
-        let priceChange = ((item.close - item.open) / item.open * 100).toFixed(2); // 计算涨幅
-        resultHTML += `
-            <tr>
-                <td>${item.date}</td>
-                <td>${item.open}</td>
-                <td>${item.close}</td>
-                <td>${priceChange}%</td>
-                <td>${item.volume}</td>
-            </tr>`;
-    });
-
-    resultHTML += `</tbody></table>`;
-    document.getElementById('result').innerHTML = resultHTML;
-}
+    }
 </script>
 
 </body>
