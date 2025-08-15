@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>股票查询与波动预测</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f5f5f5;
+      color: #333;
+      padding: 20px;
+    }
+    h1 {
+      text-align: center;
+      color: #4CAF50;
+    }
+    .container {
+      max-width: 800px;
+      margin: auto;
+      background-color: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+    .input-group {
+      margin-bottom: 20px;
+    }
+    .input-group input {
+      padding: 10px;
+      font-size: 16px;
+      width: 100%;
+      margin-top: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    .btn {
+      background-color: #4CAF50;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .btn:hover {
+      background-color: #45a049;
+    }
+    .result {
+      margin-top: 30px;
+      background-color: #f9f9f9;
+      padding: 20px;
+      border-radius: 4px;
+    }
+    .result h3 {
+      margin-top: 0;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <h1>股票查询与波动预测</h1>
+
+    <div class="input-group">
+      <label for="stockCode">请输入股票代码：</label>
+      <input type="text" id="stockCode" placeholder="例如：AAPL (苹果股票)">
+    </div>
+
+    <button class="btn" onclick="fetchStockData()">获取股票数据</button>
+
+    <div id="results" class="result">
+      <!-- 股票数据结果将在这里显示 -->
+    </div>
+  </div>
+
+  <script>
+    const API_URL = "https://www.alphavantage.co/query";
+    const API_KEY = "YOUR_API_KEY"; // 8F78ZXEXI74TFQAB
+
+    function fetchStockData() {
+      const stockCode = document.getElementById("stockCode").value;
+      if (!stockCode) {
+        alert("请输入股票代码");
+        return;
+      }
+
+      const url = `${API_URL}?function=TIME_SERIES_DAILY&symbol=${stockCode}&apikey=${API_KEY}&outputsize=compact`;
+
+      fetch(url)
+        .then(response => response.json())
+        .then(data => {
+          if (data["Time Series (Daily)"]) {
+            const timeSeries = data["Time Series (Daily)"];
+            const lastDate = Object.keys(timeSeries)[0];
+            const lastClosePrice = parseFloat(timeSeries[lastDate]["4. close"]);
+            
+            // 假设你有个基准股价 10 元
+            const basePrice = 10;
+            const deviation = ((lastClosePrice - basePrice) / basePrice) * 100;
+
+            const result = {
+              stock_code: stockCode,
+              current_deviation: deviation.toFixed(2),
+              predict_trigger_price_10: (lastClosePrice * 1.1).toFixed(2),
+            };
+
+            displayResults(result);
+          } else {
+            alert("无法获取数据，请检查股票代码！");
+          }
+        })
+        .catch(error => {
+          console.error('获取数据失败:', error);
+        });
+    }
+
+    function displayResults(data) {
+      const resultsContainer = document.getElementById("results");
+
+      resultsContainer.innerHTML = `
+        <h3>股票代码: ${data.stock_code}</h3>
+        <div>当前偏离值: ${data.current_deviation}%</div>
+        <div>预计10日触发价格: ${data.predict_trigger_price_10}元</div>
+      `;
+    }
+  </script>
+</body>
+</html>
