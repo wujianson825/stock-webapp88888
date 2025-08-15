@@ -1,162 +1,62 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>股票查询与波动预测</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background-color: #f5f5f5;
-      color: #333;
-      padding: 20px;
-    }
-    h1 {
-      text-align: center;
-      color: #4CAF50;
-    }
-    .container {
-      max-width: 800px;
-      margin: auto;
-      background-color: #fff;
-      padding: 20px;
-      border-radius: 8px;
-      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-    }
-    .input-group {
-      margin-bottom: 20px;
-    }
-    .input-group input, .input-group select {
-      padding: 10px;
-      font-size: 16px;
-      width: 100%;
-      margin-top: 10px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-    }
-    .btn {
-      background-color: #4CAF50;
-      color: white;
-      padding: 10px 20px;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    .btn:hover {
-      background-color: #45a049;
-    }
-    .result {
-      margin-top: 30px;
-      background-color: #f9f9f9;
-      padding: 20px;
-      border-radius: 4px;
-    }
-    .result h3 {
-      margin-top: 0;
-    }
-  </style>
-</head>
-<body>
+import tushare as ts
+import pandas as pd
 
-  <div class="container">
-    <h1>股票查询与波动预测</h1>
+# 设置 TuShare Token
+ts.set_token(6f4bb3282e834e7c85aa4b11bcfd56b8bddd899ea60e4660b67fa0caa7471f3f)  # 替换为你的API Key
+pro = ts.pro_api()
 
-    <div class="input-group">
-      <label for="stockCode">请输入股票代码：</label>
-      <input type="text" id="stockCode" placeholder="例如：AAPL (苹果股票)">
-    </div>
+# 获取股票和指数的历史数据
+def get_stock_data(stock_code, start_date, end_date):
+    # 获取股票历史数据
+    stock_data = pro.daily(ts_code=stock_code, start_date=start_date, end_date=end_date)
+    return stock_data
 
-    <button class="btn" onclick="fetchStockData()">获取股票数据</button>
+def get_index_data(index_code, start_date, end_date):
+    # 获取指数历史数据
+    index_data = pro.index_daily(ts_code=index_code, start_date=start_date, end_date=end_date)
+    return index_data
 
-    <div id="results" class="result">
-      <!-- 股票数据结果将在这里显示 -->
-    </div>
-  </div>
+def calculate_deviation(stock_data, index_data):
+    # 合并数据，计算股票与指数的涨跌幅偏离值
+    df = pd.merge(stock_data[['trade_date', 'close']], index_data[['trade_date', 'close']], on='trade_date', suffixes=('_stock', '_index'))
 
-  <script>
-    const API_URL = "https://www.alphavantage.co/query";
-    const API_KEY = "YOUR_API_KEY"; //8F78ZXEXI74TFQAB
+    # 计算每一天的涨跌幅
+    df['stock_pct_change'] = df['close_stock'].pct_change() * 100
+    df['index_pct_change'] = df['close_index'].pct_change() * 100
 
-    function fetchStockData() {
-      const stockCode = document.getElementById("stockCode").value;
-      if (!stockCode) {
-        alert("请输入股票代码");
-        return;
-      }
+    # 计算偏离值
+    df['deviation'] = df['stock_pct_change'] - df['index_pct_change']
+    
+    return df
 
-      const url = `${API_URL}?function=TIME_SERIES_DAILY&symbol=${stockCode}&apikey=${API_KEY}&outputsize=full`;
+def calculate_cumulative_deviation(deviation_series, period=10):
+    # 计算累计偏离值
+    cumulative_deviation = deviation_series.tail(period).sum()
+    return cumulative_deviation
 
-      fetch(url)
-        .then(response => response.json())
-        .then(data => {
-          if (data["Time Series (Daily)"]) {
-            const timeSeries = data["Time Series (Daily)"];
-            const dates = Object.keys(timeSeries);
-            
-            // 获取起始日期、终止日期、起始价格和终止价格
-            const startDate = dates[dates.length - 1];
-            const endDate = dates[0];
-            const startPrice = parseFloat(timeSeries[startDate]["4. close"]);
-            const endPrice = parseFloat(timeSeries[endDate]["4. close"]);
+def predict_trigger_price(stock_data, index_data, period=10):
+    # 假设股票日涨幅限制为10%
+    max_increase_percentage = 10  # 股票日涨幅最大为10%
+    
+    df = calculate_deviation(stock_data, index_data)
+    
+    # 计算滚动的累计偏离值
+    cumulative_deviation = calculate_cumulative_deviation(df['deviation'], period)
 
-            // 计算10天和30天的涨幅偏离值累计值
-            const calculateDeviation = (days) => {
-              let deviationSum = 0;
-              let basePrice = parseFloat(timeSeries[dates[days - 1]]["4. close"]);
+    # 根据累计偏离值来预测价格
+    # 假设，如果偏离值累计达到100%（即，股票涨幅将达到10%）
+    trigger_price = stock_data['close'].iloc[-1] * (1 + max_increase_percentage / 100)
+    return trigger_price, cumulative_deviation
 
-              for (let i = 0; i < days; i++) {
-                const currentDate = dates[i];
-                const currentPrice = parseFloat(timeSeries[currentDate]["4. close"]);
-                deviationSum += ((currentPrice - basePrice) / basePrice) * 100;
-                basePrice = currentPrice;
-              }
-              return deviationSum.toFixed(2);
-            };
+# 示例：获取A股股票（如：600519.SH）与上证综指的历史数据
+stock_code = '600519.SH'
+index_code = '000001.SH'  # 上证综指
 
-            const deviation10 = calculateDeviation(10);
-            const deviation30 = calculateDeviation(30);
+# 获取数据
+stock_data = get_stock_data(stock_code, '20230101', '20230815')
+index_data = get_index_data(index_code, '20230101', '20230815')
 
-            // 计算未来10天和30天可能触发的股价
-            const predictTriggerPrice10 = (endPrice * 1.1).toFixed(2);  // 假设未来10天涨幅为10%
-            const predictTriggerPrice30 = (endPrice * 1.3).toFixed(2);  // 假设未来30天涨幅为30%
-
-            const result = {
-              stock_code: stockCode,
-              start_date: startDate,
-              end_date: endDate,
-              start_price: startPrice,
-              end_price: endPrice,
-              deviation_10d: deviation10,
-              deviation_30d: deviation30,
-              predict_trigger_price_10: predictTriggerPrice10,
-              predict_trigger_price_30: predictTriggerPrice30,
-            };
-
-            displayResults(result);
-          } else {
-            alert("无法获取数据，请检查股票代码！");
-          }
-        })
-        .catch(error => {
-          console.error('获取数据失败:', error);
-        });
-    }
-
-    function displayResults(data) {
-      const resultsContainer = document.getElementById("results");
-
-      resultsContainer.innerHTML = `
-        <h3>股票代码: ${data.stock_code}</h3>
-        <div>起始日期: ${data.start_date}</div>
-        <div>终止日期: ${data.end_date}</div>
-        <div>起始价格: ${data.start_price}元</div>
-        <div>终止价格: ${data.end_price}元</div>
-        <div>10日累计偏离值: ${data.deviation_10d}%</div>
-        <div>30日累计偏离值: ${data.deviation_30d}%</div>
-        <div>预计10日触发价格: ${data.predict_trigger_price_10}元</div>
-        <div>预计30日触发价格: ${data.predict_trigger_price_30}元</div>
-      `;
-    }
-  </script>
-</body>
-</html>
+# 计算预测价格和累计偏离值
+predict_price, cumulative_deviation = predict_trigger_price(stock_data, index_data, period=10)
+print(f"预测触发价格: {predict_price}")
+print(f"10日累计偏离值: {cumulative_deviation}")
